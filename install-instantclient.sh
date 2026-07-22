@@ -150,10 +150,26 @@ log "Extraindo pacotes..."
 $SUDO unzip -oq "${TMPDIR}/${BASIC_ZIP}"   -d "$INSTALL_DIR"
 $SUDO unzip -oq "${TMPDIR}/${SQLPLUS_ZIP}" -d "$INSTALL_DIR"
 
-# Descobre o diretório extraído (ex: instantclient_23_5).
-IC_HOME="$(find "$INSTALL_DIR" -maxdepth 1 -type d -name 'instantclient_*' | sort -V | tail -n1)"
-[[ -n "$IC_HOME" ]] || die "Não encontrei o diretório instantclient_* em ${INSTALL_DIR}."
+# Descobre a pasta EXATA que ESTE pacote extraiu (ex: instantclient_19_28),
+# lendo o topo do próprio zip. Assim, se já existir outra versão instalada
+# (ex: uma 23.x anterior que quebrou), apontamos para a que acabamos de instalar,
+# e não para a de maior número.
+IC_SUBDIR="$(unzip -Z1 "${TMPDIR}/${BASIC_ZIP}" \
+  | grep -oE '^instantclient_[0-9_]+' | sort -u | head -1)"
+IC_HOME="${INSTALL_DIR}/${IC_SUBDIR}"
+[[ -n "$IC_SUBDIR" && -d "$IC_HOME" ]] \
+  || die "Não encontrei o diretório extraído (${IC_HOME})."
 log "Instant Client instalado em: ${IC_HOME}"
+
+# Avisa se há outra versão sobrando no mesmo diretório de instalação.
+OTHER_VERSIONS="$(find "$INSTALL_DIR" -maxdepth 1 -type d -name 'instantclient_*' \
+  ! -path "$IC_HOME" 2>/dev/null || true)"
+if [[ -n "$OTHER_VERSIONS" ]]; then
+  warn "Existem outras versões do Instant Client em ${INSTALL_DIR}:"
+  while IFS= read -r d; do warn "  - ${d}"; done <<< "$OTHER_VERSIONS"
+  warn "Elas NÃO são usadas (env/symlinks apontam para ${IC_HOME})."
+  warn "Se quiser removê-las: sudo rm -rf ${OTHER_VERSIONS//$'\n'/ }"
+fi
 
 # INSTANT_CLIENT_HOME é a pasta REAL da instalação (detectada acima).
 # Todas as configurações abaixo derivam dela — nada é hardcoded.
