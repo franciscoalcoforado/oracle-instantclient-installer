@@ -14,25 +14,14 @@
 #
 # Variáveis de ambiente opcionais:
 #   INSTALL_DIR   Diretório base da instalação (padrão: /opt/oracle)
-#   IC_VERSION    Versão específica, ex: 21.13.0.0.0dbru (padrão: latest)
+#   IC_VERSION    Linha de versão do Instant Client (padrão: latest). Valores:
+#                   latest  -> 23.x  (exige glibc >= 2.29; Ubuntu 20.04+, RHEL 8+)
+#                   19      -> 19.x  (glibc antiga: RHEL 7, Ubuntu 18.04, Debian 9/10)
+#                   21      -> 21.x  (glibc >= 2.17; RHEL 7+)
+#                 => Se der erro "GLIBC_2.29 not found", use IC_VERSION=19.
+#   IC_BASE_URL   (avançado) Pasta de download p/ uma versão exata via IC_VERSION.
 #
 set -euo pipefail
-
-# --------------------------------------------------------------------------- #
-# Configuração
-# --------------------------------------------------------------------------- #
-INSTALL_DIR="${INSTALL_DIR:-/opt/oracle}"
-IC_VERSION="${IC_VERSION:-latest}"
-BASE_URL="https://download.oracle.com/otn_software/linux/instantclient"
-
-if [[ "$IC_VERSION" == "latest" ]]; then
-  BASIC_ZIP="instantclient-basic-linuxx64.zip"
-  SQLPLUS_ZIP="instantclient-sqlplus-linuxx64.zip"
-else
-  BASIC_ZIP="instantclient-basic-linux.x64-${IC_VERSION}.zip"
-  SQLPLUS_ZIP="instantclient-sqlplus-linux.x64-${IC_VERSION}.zip"
-  BASE_URL="${BASE_URL}/${IC_VERSION%%.*}00"  # ex: 21 -> .../2100 (ajuste se necessário)
-fi
 
 # --------------------------------------------------------------------------- #
 # Helpers
@@ -40,6 +29,42 @@ fi
 log()  { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[!]\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31m[erro]\033[0m %s\n' "$*" >&2; exit 1; }
+
+# --------------------------------------------------------------------------- #
+# Configuração
+# --------------------------------------------------------------------------- #
+INSTALL_DIR="${INSTALL_DIR:-/opt/oracle}"
+IC_VERSION="${IC_VERSION:-latest}"
+ROOT_URL="https://download.oracle.com/otn_software/linux/instantclient"
+
+case "$IC_VERSION" in
+  latest|23|23ai)
+    # 23.x — compilado para glibc >= 2.29 (Ubuntu 20.04+, RHEL/Rocky/OL 8+).
+    BASE_URL="$ROOT_URL"
+    BASIC_ZIP="instantclient-basic-linuxx64.zip"
+    SQLPLUS_ZIP="instantclient-sqlplus-linuxx64.zip"
+    ;;
+  19)
+    # 19.x — roda em glibc antiga (RHEL 7, Ubuntu 18.04). Recomendado p/ SO legado.
+    BASE_URL="$ROOT_URL/1928000"
+    BASIC_ZIP="instantclient-basic-linux.x64-19.28.0.0.0dbru.zip"
+    SQLPLUS_ZIP="instantclient-sqlplus-linux.x64-19.28.0.0.0dbru.zip"
+    ;;
+  21)
+    # 21.x — exige glibc >= 2.17 (RHEL 7+).
+    BASE_URL="$ROOT_URL/2119000"
+    BASIC_ZIP="instantclient-basic-linux.x64-21.19.0.0.0dbru.zip"
+    SQLPLUS_ZIP="instantclient-sqlplus-linux.x64-21.19.0.0.0dbru.zip"
+    ;;
+  *)
+    # Versão exata (ex: 19.27.0.0.0dbru) — exige a pasta via IC_BASE_URL.
+    [[ -n "${IC_BASE_URL:-}" ]] || \
+      die "Para IC_VERSION=$IC_VERSION defina também IC_BASE_URL=<pasta do download>."
+    BASE_URL="$IC_BASE_URL"
+    BASIC_ZIP="instantclient-basic-linux.x64-${IC_VERSION}.zip"
+    SQLPLUS_ZIP="instantclient-sqlplus-linux.x64-${IC_VERSION}.zip"
+    ;;
+esac
 
 # Decide se precisamos e podemos usar sudo.
 SUDO=""

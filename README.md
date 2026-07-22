@@ -32,8 +32,30 @@ sudo ./install-instantclient.sh
 # Instalação local no HOME (sem sudo)
 INSTALL_DIR="$HOME/oracle" ./install-instantclient.sh
 
-# Versão específica
-IC_VERSION="21.13.0.0.0dbru" sudo ./install-instantclient.sh
+# Linha de versão do Instant Client:
+IC_VERSION=19 sudo ./install-instantclient.sh   # 19.x  (SO antigo)
+IC_VERSION=21 sudo ./install-instantclient.sh   # 21.x
+# (sem IC_VERSION = latest = 23.x)
+```
+
+## Erro `GLIBC_2.29 not found`
+
+```
+Error: /lib64/libm.so.6: version `GLIBC_2.29' not found
+```
+
+Significa que o SO da máquina é **antigo demais** para o Instant Client 23.x (o `latest`).
+Verifique a glibc com `ldd --version` e escolha a versão compatível:
+
+| SO de destino                       | glibc  | Use             |
+|-------------------------------------|--------|-----------------|
+| RHEL/CentOS/Oracle Linux 7          | 2.17   | `IC_VERSION=19` |
+| Ubuntu 18.04 / Debian 9,10          | 2.24–2.27 | `IC_VERSION=19` |
+| RHEL 8+ / Ubuntu 20.04+ (glibc ≥2.29)| 2.28+  | `latest` (padrão)|
+
+```bash
+# Solução para SO antigo:
+IC_VERSION=19 sudo ./install-instantclient.sh
 ```
 
 ## Pré-requisitos
