@@ -32,11 +32,20 @@ sudo ./install-instantclient.sh
 # Instalação local no HOME (sem sudo)
 INSTALL_DIR="$HOME/oracle" ./install-instantclient.sh
 
-# Linha de versão do Instant Client:
+# Forçar uma linha de versão (o padrão detecta a glibc sozinho):
 IC_VERSION=19 sudo ./install-instantclient.sh   # 19.x  (SO antigo)
 IC_VERSION=21 sudo ./install-instantclient.sh   # 21.x
-# (sem IC_VERSION = latest = 23.x)
+IC_VERSION=latest sudo ./install-instantclient.sh # 23.x
 ```
+
+## Seleção automática de versão (padrão)
+
+Sem `IC_VERSION`, o script **detecta a glibc** da máquina e escolhe sozinho:
+
+- glibc **< 2.29** (RHEL 7, Ubuntu 18.04, Debian ≤10) → Instant Client **19.x**
+- glibc **≥ 2.29** (RHEL 8+, Ubuntu 20.04+) → **latest (23.x)**
+
+Ou seja, o erro `GLIBC_2.29 not found` já não acontece com o padrão.
 
 ## Erro `GLIBC_2.29 not found`
 
@@ -44,8 +53,9 @@ IC_VERSION=21 sudo ./install-instantclient.sh   # 21.x
 Error: /lib64/libm.so.6: version `GLIBC_2.29' not found
 ```
 
-Significa que o SO da máquina é **antigo demais** para o Instant Client 23.x (o `latest`).
-Verifique a glibc com `ldd --version` e escolha a versão compatível:
+Ocorre se você **forçou** `IC_VERSION=latest` num SO antigo demais para o 23.x.
+Basta remover o `IC_VERSION` (deixar o auto agir) ou usar `IC_VERSION=19`.
+Verifique a glibc com `ldd --version`:
 
 | SO de destino                       | glibc  | Use             |
 |-------------------------------------|--------|-----------------|

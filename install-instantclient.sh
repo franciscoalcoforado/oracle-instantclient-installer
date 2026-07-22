@@ -14,11 +14,11 @@
 #
 # Variáveis de ambiente opcionais:
 #   INSTALL_DIR   Diretório base da instalação (padrão: /opt/oracle)
-#   IC_VERSION    Linha de versão do Instant Client (padrão: latest). Valores:
+#   IC_VERSION    Linha de versão do Instant Client (padrão: auto). Valores:
+#                   auto    -> detecta a glibc e escolhe 19.x ou latest (recomendado)
 #                   latest  -> 23.x  (exige glibc >= 2.29; Ubuntu 20.04+, RHEL 8+)
 #                   19      -> 19.x  (glibc antiga: RHEL 7, Ubuntu 18.04, Debian 9/10)
 #                   21      -> 21.x  (glibc >= 2.17; RHEL 7+)
-#                 => Se der erro "GLIBC_2.29 not found", use IC_VERSION=19.
 #   IC_BASE_URL   (avançado) Pasta de download p/ uma versão exata via IC_VERSION.
 #
 set -euo pipefail
@@ -30,12 +30,42 @@ log()  { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[!]\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31m[erro]\033[0m %s\n' "$*" >&2; exit 1; }
 
+# Detecta a versão da glibc do sistema (ex: "2.31"). Vazio se não conseguir.
+detect_glibc() {
+  local v=""
+  if command -v getconf >/dev/null 2>&1; then
+    v="$(getconf GNU_LIBC_VERSION 2>/dev/null | awk '{print $NF}')"
+  fi
+  if [[ -z "$v" ]] && command -v ldd >/dev/null 2>&1; then
+    v="$(ldd --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+' | head -1)"
+  fi
+  printf '%s' "$v"
+}
+
 # --------------------------------------------------------------------------- #
 # Configuração
 # --------------------------------------------------------------------------- #
 INSTALL_DIR="${INSTALL_DIR:-/opt/oracle}"
-IC_VERSION="${IC_VERSION:-latest}"
+IC_VERSION="${IC_VERSION:-auto}"
 ROOT_URL="https://download.oracle.com/otn_software/linux/instantclient"
+
+# Resolve IC_VERSION=auto de acordo com a glibc (23.x exige glibc >= 2.29).
+if [[ "$IC_VERSION" == "auto" ]]; then
+  GLIBC="$(detect_glibc)"
+  if [[ -z "$GLIBC" ]]; then
+    warn "Não consegui detectar a glibc — assumindo 'latest' (23.x)."
+    IC_VERSION="latest"
+  else
+    lowest="$(printf '2.29\n%s\n' "$GLIBC" | sort -V | head -1)"
+    if [[ "$GLIBC" != "2.29" && "$lowest" == "$GLIBC" ]]; then
+      IC_VERSION="19"
+      log "glibc ${GLIBC} < 2.29 → usando Instant Client 19.x (compatível)."
+    else
+      IC_VERSION="latest"
+      log "glibc ${GLIBC} (>= 2.29) → usando Instant Client latest (23.x)."
+    fi
+  fi
+fi
 
 case "$IC_VERSION" in
   latest|23|23ai)
