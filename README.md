@@ -11,6 +11,7 @@ Feito para preparar máquinas externas que rodam um sistema **Node.js** acessand
 - Extrai para o diretório de instalação e detecta a versão automaticamente.
 - Exporta `INSTANT_CLIENT_HOME`, `LD_LIBRARY_PATH` e `PATH`.
 - Cria os symlinks das bibliotecas (`libclntsh.so`, `libocci.so`, etc.) com versão detectada dinamicamente.
+- **Instala a `libaio`** automaticamente (dependência obrigatória do OCI) via o gerenciador de pacotes da distro.
 - Verifica com `sqlplus -V` e imprime um **resumo da instalação** ao final.
 
 ## Como usar (no terminal Linux da máquina de destino)
@@ -70,7 +71,14 @@ IC_VERSION=19 sudo ./install-instantclient.sh
 
 ## Pré-requisitos
 
-O script verifica `curl`, `unzip` e `libaio`. Se a `libaio` faltar:
+Precisa de `curl` e `unzip` (o script aborta com mensagem clara se faltarem).
+
+A **`libaio`** é instalada automaticamente pelo script (com `sudo`/root), cobrindo
+`apt-get`, `dnf`, `microdnf`, `yum`, `zypper` e `apk`. No Ubuntu 24.04+/Debian 13+
+ele usa `libaio1t64`; nas demais, `libaio1`/`libaio`.
+
+Se rodar **sem privilégios** (instalação local no HOME) e a `libaio` faltar,
+o script avisa o comando manual conforme a distro:
 
 | Distro          | Comando                                                      |
 |-----------------|-------------------------------------------------------------|

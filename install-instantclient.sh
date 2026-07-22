@@ -116,13 +116,53 @@ log "Verificando pré-requisitos (curl, unzip, libaio)..."
 command -v curl  >/dev/null 2>&1 || die "curl não encontrado. Instale-o e rode novamente."
 command -v unzip >/dev/null 2>&1 || die "unzip não encontrado. Instale-o e rode novamente."
 
-# libaio é necessária pelo OCI. Tenta detectar; se ausente, avisa como instalar.
-if ! ldconfig -p 2>/dev/null | grep -q 'libaio\.so'; then
-  warn "Biblioteca libaio não detectada. Instale conforme sua distro:"
-  warn "  Debian/Ubuntu : sudo apt-get install -y libaio1   (ou libaio1t64 no Ubuntu 24.04+)"
-  warn "  RHEL/Rocky/OL : sudo dnf install -y libaio"
-  warn "  Alpine        : sudo apk add libaio"
-fi
+# libaio é necessária pelo OCI. Detecta e, se faltar, INSTALA via gerenciador
+# de pacotes da distro. (No Ubuntu 24.04+ o pacote virou libaio1t64.)
+libaio_present() { ldconfig -p 2>/dev/null | grep -q 'libaio\.so\.1'; }
+
+ensure_libaio() {
+  if libaio_present; then
+    log "libaio: já presente."
+    return 0
+  fi
+
+  if [[ -z "$SUDO" && "$EUID" -ne 0 ]]; then
+    warn "libaio ausente e sem privilégios para instalar. Instale manualmente e rode de novo:"
+    warn "  Debian/Ubuntu : sudo apt-get install -y libaio1   (ou libaio1t64 no 24.04+)"
+    warn "  RHEL/Rocky/OL : sudo dnf install -y libaio"
+    warn "  Alpine        : sudo apk add libaio"
+    return 1
+  fi
+
+  log "libaio: ausente — instalando via gerenciador de pacotes..."
+  if command -v apt-get >/dev/null 2>&1; then
+    $SUDO apt-get update -y >/dev/null 2>&1 || true
+    $SUDO apt-get install -y libaio1 2>/dev/null \
+      || $SUDO apt-get install -y libaio1t64   # Ubuntu 24.04+/Debian 13+
+  elif command -v dnf >/dev/null 2>&1; then
+    $SUDO dnf install -y libaio
+  elif command -v microdnf >/dev/null 2>&1; then
+    $SUDO microdnf install -y libaio
+  elif command -v yum >/dev/null 2>&1; then
+    $SUDO yum install -y libaio
+  elif command -v zypper >/dev/null 2>&1; then
+    $SUDO zypper --non-interactive install libaio1
+  elif command -v apk >/dev/null 2>&1; then
+    $SUDO apk add --no-cache libaio
+  else
+    warn "Gerenciador de pacotes não reconhecido — instale a libaio manualmente."
+    return 1
+  fi
+
+  $SUDO ldconfig 2>/dev/null || true
+  if libaio_present; then
+    log "libaio: instalada com sucesso."
+  else
+    warn "libaio: não confirmei a instalação — a verificação final pode falhar."
+  fi
+}
+
+if ensure_libaio; then LIBAIO_STATUS="ok"; else LIBAIO_STATUS="pendente"; fi
 
 # --------------------------------------------------------------------------- #
 # Download
@@ -280,6 +320,7 @@ else
   printf 'Status              : \033[1;31mCOM AVISOS\033[0m (veja mensagens acima)\n'
 fi
 echo   "Componentes         : Basic + SQL*Plus"
+echo   "libaio              : ${LIBAIO_STATUS}"
 echo   "Versão (sqlplus)    : ${SQLPLUS_VERSION:-não verificada}"
 echo   "INSTANT_CLIENT_HOME : ${INSTANT_CLIENT_HOME}"
 echo   "LD_LIBRARY_PATH     : ${INSTANT_CLIENT_HOME}:\$LD_LIBRARY_PATH"
