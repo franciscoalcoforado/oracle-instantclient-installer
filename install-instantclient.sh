@@ -164,6 +164,65 @@ ensure_libaio() {
 
 if ensure_libaio; then LIBAIO_STATUS="ok"; else LIBAIO_STATUS="pendente"; fi
 
+# libnsl.so.1 é exigida pelo Instant Client 19.x/21.x. Nas distros modernas
+# (RHEL 8+, Ubuntu) a libnsl foi separada da glibc e não vem por padrão.
+# Tenta instalar o pacote; se só houver libnsl.so.2, cria o symlink .1 -> .2.
+libnsl1_present() { ldconfig -p 2>/dev/null | grep -q 'libnsl\.so\.1'; }
+
+ensure_libnsl() {
+  if libnsl1_present; then
+    log "libnsl.so.1: já presente."
+    return 0
+  fi
+
+  if [[ -z "$SUDO" && "$EUID" -ne 0 ]]; then
+    warn "libnsl.so.1 ausente e sem privilégios para instalar. Instale manualmente:"
+    warn "  Debian/Ubuntu : sudo apt-get install -y libnsl2"
+    warn "  RHEL/Rocky/OL : sudo dnf install -y libnsl        # pacote legado (.so.1)"
+    return 1
+  fi
+
+  log "libnsl.so.1: ausente — instalando via gerenciador de pacotes..."
+  if command -v apt-get >/dev/null 2>&1; then
+    $SUDO apt-get update -y >/dev/null 2>&1 || true
+    $SUDO apt-get install -y libnsl2 2>/dev/null || true
+  elif command -v dnf >/dev/null 2>&1; then
+    # 'libnsl' (legado) fornece libnsl.so.1 no EL8+; 'libnsl2' fornece a .so.2.
+    $SUDO dnf install -y libnsl libnsl2 2>/dev/null || $SUDO dnf install -y libnsl || true
+  elif command -v microdnf >/dev/null 2>&1; then
+    $SUDO microdnf install -y libnsl libnsl2 2>/dev/null || $SUDO microdnf install -y libnsl || true
+  elif command -v yum >/dev/null 2>&1; then
+    $SUDO yum install -y libnsl libnsl2 2>/dev/null || $SUDO yum install -y libnsl || true
+  elif command -v zypper >/dev/null 2>&1; then
+    $SUDO zypper --non-interactive install libnsl1 2>/dev/null \
+      || $SUDO zypper --non-interactive install libnsl2 || true
+  elif command -v apk >/dev/null 2>&1; then
+    $SUDO apk add --no-cache libnsl 2>/dev/null || true
+  fi
+  $SUDO ldconfig 2>/dev/null || true
+
+  # Se ainda faltar a .so.1 mas existir a .so.2, cria o symlink de compatibilidade
+  # usando o caminho REAL informado pelo ldconfig (varia entre distros).
+  if ! libnsl1_present; then
+    local so2
+    so2="$(ldconfig -p 2>/dev/null | awk '/libnsl\.so\.2/ {print $NF; exit}')"
+    if [[ -n "$so2" && -e "$so2" ]]; then
+      log "libnsl.so.1: criando symlink de compatibilidade -> ${so2}"
+      $SUDO ln -sf "$so2" "$(dirname "$so2")/libnsl.so.1"
+      $SUDO ldconfig 2>/dev/null || true
+    fi
+  fi
+
+  if libnsl1_present; then
+    log "libnsl.so.1: disponível."
+    return 0
+  fi
+  warn "libnsl.so.1: não consegui prover — a verificação final pode falhar."
+  return 1
+}
+
+if ensure_libnsl; then LIBNSL_STATUS="ok"; else LIBNSL_STATUS="pendente"; fi
+
 # --------------------------------------------------------------------------- #
 # Download
 # --------------------------------------------------------------------------- #
@@ -285,7 +344,7 @@ if [[ -n "$SUDO" || "$EUID" -eq 0 ]]; then
     fi
   }
 
-  compat_link /usr/lib/libnsl.so.2        /usr/lib/libnsl.so.1
+  # libnsl.so.1 já é tratada de forma robusta por ensure_libnsl() (acima).
   compat_link /lib/libc.so.6              /usr/lib/libresolv.so.2
   compat_link /lib64/ld-linux-x86-64.so.2 /usr/lib/ld-linux-x86-64.so.2
 
@@ -321,6 +380,7 @@ else
 fi
 echo   "Componentes         : Basic + SQL*Plus"
 echo   "libaio              : ${LIBAIO_STATUS}"
+echo   "libnsl.so.1         : ${LIBNSL_STATUS}"
 echo   "Versão (sqlplus)    : ${SQLPLUS_VERSION:-não verificada}"
 echo   "INSTANT_CLIENT_HOME : ${INSTANT_CLIENT_HOME}"
 echo   "LD_LIBRARY_PATH     : ${INSTANT_CLIENT_HOME}:\$LD_LIBRARY_PATH"
